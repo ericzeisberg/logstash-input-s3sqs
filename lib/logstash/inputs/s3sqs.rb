@@ -101,9 +101,10 @@ class LogStash::Inputs::S3SQS < LogStash::Inputs::Threadable
   attr_reader :s3
 
   def register
-    require "aws-sdk"
-    @logger.info("Registering SQS input", :queue => @queue)
-    setup_queue
+    # require "aws-sdk"
+    # @logger.info("Registering SQS input", :queue => @queue)
+    # setup_queue
+    @logger.info("bypassing SQS registry")
   end
 
   def setup_queue
@@ -129,7 +130,9 @@ class LogStash::Inputs::S3SQS < LogStash::Inputs::Threadable
   end
 
   def handle_message(message, queue)
-    hash = JSON.parse message.body
+    # hash = JSON.parse message.body
+    json_file = '/Users/ericeisberg/Code/Elastic/test_data/mock_s3.json'
+    hash = JSON.parse(json_file)
     # there may be test events sent from the s3 bucket which won't contain a Records array,
     # we will skip those events and remove them from queue
     if hash['Records'] then
@@ -169,16 +172,13 @@ class LogStash::Inputs::S3SQS < LogStash::Inputs::Threadable
             end
             # process the plain text content
             begin
-              lines = body.read.encode('UTF-8', 'binary', invalid: :replace, undef: :replace, replace: "\u2370").split(/\n/)
-              lines.each do |line|
-                @codec.decode(line) do |event|
-                  decorate(event)
+              @codec.decode(body.read.encode('UTF-8', 'binary', invalid: :replace, undef: :replace, replace: "\u2370").split(/\n/)) do |event|
+                decorate(event)
 
-                  event.set('[@metadata][s3_bucket_name]', record['s3']['bucket']['name'])
-                  event.set('[@metadata][s3_object_key]', record['s3']['object']['key'])
+                event.set('[@metadata][s3_bucket_name]', record['s3']['bucket']['name'])
+                event.set('[@metadata][s3_object_key]', record['s3']['object']['key'])
 
-                  queue << event
-                end
+                queue << event
               end
             rescue => e
               @logger.warn("issuing :skip_delete on failed plain text processing", :bucket => bucket, :object => unescaped_key, :error => e)
@@ -204,13 +204,13 @@ class LogStash::Inputs::S3SQS < LogStash::Inputs::Threadable
 
   def run(queue)
     # ensure we can stop logstash correctly
-    poller.before_request do |stats|
-      if stop? then
-        @logger.warn("issuing :stop_polling on stop?", :queue => @queue)
-        # this can take up to "Receive Message Wait Time" (of the sqs queue) seconds to be recognized
-        throw :stop_polling
-      end
-    end
+    # poller.before_request do |stats|
+    #   if stop? then
+    #     @logger.warn("issuing :stop_polling on stop?", :queue => @queue)
+    #     # this can take up to "Receive Message Wait Time" (of the sqs queue) seconds to be recognized
+    #     throw :stop_polling
+    #   end
+    # end
     # poll a message and process it
     run_with_backoff do
       poller.poll(polling_options) do |message|
